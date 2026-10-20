@@ -21,7 +21,7 @@ export async function readImportUrl(raw: string, current: () => boolean = () => 
       request = pool.run(async () => {
         const response = await requestUrl({ url, method: 'GET', throw: false });
         if (response.status < 200 || response.status >= 300) fail('error.readFailedHttp', { status: response.status });
-        if (new TextEncoder().encode(response.text).length > 5 * 1024 * 1024) fail('error.fileTooLarge');
+        // Fork change (lukaschan): no response-size cap; see feeds.ts xmlDocument.
         return { url, text: response.text, headers: Object.fromEntries(Object.entries(response.headers || {}).map(([key, value]) => [key.toLowerCase(), value])) };
       }, () => current() && Date.now() < expires).finally(() => pending.delete(url));
       pending.set(url, request);

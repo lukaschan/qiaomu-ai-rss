@@ -18,11 +18,11 @@ describe('subscription resolution by content', () => {
     expect(list).toMatchObject({kind:'opml',skipped:2,feeds:[{name:'Lex',group:'Podcasts'}]});
     expect((await resolveDocument('<feed xmlns="http://www.w3.org/2005/Atom"><title>Empty</title></feed>','https://example.com/atom',document)).kind).toBe('feed');
   });
-  it('rejects arbitrary XML, malformed XML, DTD, dangerous URLs and oversize input', async () => {
+  it('rejects arbitrary XML, malformed XML, DTD and dangerous URLs; accepts oversize input (fork: no size cap)', async () => {
     await expect(resolveDocument('<urlset/>','https://example.com',document)).rejects.toThrow(t('source.unsupported'));
     await expect(resolveDocument('<rss>','https://example.com',document)).rejects.toThrow();
     await expect(resolveDocument('<!DOCTYPE rss [<!ENTITY x SYSTEM "file:///etc/passwd">]>'+rss,'https://example.com',document)).rejects.toThrow();
-    await expect(resolveDocument(' '.repeat(5*1024*1024)+rss,'https://example.com',document)).rejects.toThrow();
+    await expect(resolveDocument(' '.repeat(5*1024*1024)+rss,'https://example.com',document)).resolves.toMatchObject({kind:'feed'});
     const read=reader({});await expect(resolveSource('https://user:pass@example.com',document,undefined,read)).rejects.toThrow();expect(read).not.toHaveBeenCalled();
   });
   it('does not treat a local feed without an online self address as a subscription', async () => {

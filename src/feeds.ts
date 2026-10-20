@@ -3,7 +3,6 @@ import { safeUrl, type Entry, type Subscription } from './model';
 import { fail, t } from './i18n';
 
 export const MAX_SUBSCRIPTIONS = 2000;
-const MAX_XML = 5 * 1024 * 1024;
 const MAX_STORED_FEED = 1024 * 1024;
 export interface FeedInput { url: string; name: string; group: string }
 export function feedUrl(value: string): string {
@@ -16,7 +15,8 @@ export async function stableId(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 export function xmlDocument(value: string, doc: Document): Document {
-  if (new TextEncoder().encode(value).byteLength > MAX_XML) fail('error.xmlTooLarge');
+  // Fork change (lukaschan): the upstream 5 MiB XML size limit is removed so
+  // large merged feeds can be parsed. DTD/entity documents are still rejected.
   if (/<!DOCTYPE|<!ENTITY/i.test(value)) fail('error.xmlDtdUnsupported');
   const win = doc.defaultView;
   if (!win) fail('error.windowUnavailable');

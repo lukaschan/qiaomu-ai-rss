@@ -47,11 +47,11 @@ describe('discovery catalog and online import', () => {
     expect(importUrl('https://github.com/u/r/blob/main/feeds.opml')).toBe('https://raw.githubusercontent.com/u/r/main/feeds.opml');
     expect(() => importUrl('https://user:secret@example.org/a')).toThrow(); expect(() => importUrl('file:///tmp/a')).toThrow();
   });
-  it('redacts transport errors and rejects oversized imports', async () => {
+  it('redacts transport errors and accepts oversized imports (fork: no size cap)', async () => {
     vi.mocked(requestUrl).mockRejectedValueOnce(new Error('https://example.org/?token=private'));
     await expect(readImportUrl('https://example.org/a')).rejects.toThrow('无法读取链接');
     vi.mocked(requestUrl).mockResolvedValueOnce({ status: 200, text: 'x'.repeat(5 * 1024 * 1024 + 1) } as never);
-    await expect(readImportUrl('https://example.org/a')).rejects.toThrow('5 MB');
+    await expect(readImportUrl('https://example.org/a')).resolves.toMatchObject({ url: 'https://example.org/a' });
   });
   it('reads real site and channel image metadata without inventing an image from an empty value', async () => {
     const result = await parseFeed('<rss><channel><title>A</title><link>https://publisher.example</link><image><url>/logo.png</url></image></channel></rss>', 'https://proxy.example/feed', document);

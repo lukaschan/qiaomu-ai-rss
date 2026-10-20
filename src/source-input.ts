@@ -119,7 +119,7 @@ export class SourceInput extends Component {
     if (this.busy) return;
     const token = this.start();
     try {
-      if (file.size > 5 * 1024 * 1024) fail('error.fileTooLarge');
+      // Fork change (lukaschan): no local-file size cap; see feeds.ts xmlDocument.
       const xml = await file.text();
       if (!this.current(token)) return;
       this.input.value = file.name;
