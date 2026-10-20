@@ -2,7 +2,6 @@ import { Component } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { addSearchClear } from './search-clear';
 import { isSourceInput, resolveDocument, resolveSource, sourceUrl, type ResolvedFeed, type SourceResult } from './feed-resolver';
-import { MAX_SUBSCRIPTIONS } from './feeds';
 import { fail, t } from './i18n';
 import type { Subscription } from './model';
 import type { Subscriptions } from './subscriptions';
@@ -205,10 +204,8 @@ export class SourceInput extends Component {
     const update = () => {
       const size = result.feeds.filter(f => this.selected.has(f.url) && !this.existing(f.url)).length;
       count.setText(t('library.bulk.selected', { n: size })); button.setText(t('modal.importCount', { n: size }));
-      const over = size + this.plugin.state.subscriptions.length > MAX_SUBSCRIPTIONS;
-      button.disabled = !size || this.busy || over;
-      if (over) this.message(t('error.importLimit', { n: MAX_SUBSCRIPTIONS }));
-      else if (!this.busy) this.status.empty();
+      button.disabled = !size || this.busy;
+      if (!this.busy) this.status.empty();
       if (all) { const values = filtered().filter(f => !this.existing(f.url)); all.checked = !!values.length && values.every(f => this.selected.has(f.url)); all.indeterminate = !all.checked && values.some(f => this.selected.has(f.url)); }
     };
     const render = () => {

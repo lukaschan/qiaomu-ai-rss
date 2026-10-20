@@ -2,7 +2,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
 import { articleFragment } from '../src/content';
-import { exportOpml, feedUrl, parseFeed, parseOpml, MAX_SUBSCRIPTIONS } from '../src/feeds';
+import { exportOpml, feedUrl, parseFeed, parseOpml } from '../src/feeds';
 import { initialState, withServiceOrigin, type Bundle } from '../src/model';
 import { Subscriptions, refreshBackoffMs } from '../src/subscriptions';
 beforeAll(() => { Object.defineProperty(window.crypto, 'subtle', { value: webcrypto.subtle, configurable: true }); });
@@ -106,11 +106,14 @@ describe('feed formats and article identity', () => {
     for (const url of ['javascript:evil()', 'file:///etc/passwd', 'https://me:password@example.com/feed']) expect(() => feedUrl(url)).toThrow();
     expect(feedUrl('https://example.com:443/feed#top')).toBe('https://example.com/feed');
   });
-  it('bounds feed entry counts and cached payload size', async () => {
+  it('keeps all feed entries and full bodies without upstream bounds (fork)', async () => {
     const items = Array.from({ length: 80 }, (_, i) => `<item><guid>${i}</guid><title>${i}</title><description>${'x'.repeat(60000)}</description></item>`).join('');
     const { entries } = await parseFeed(`<rss><channel><title>Large</title>${items}</channel></rss>`, 'https://example.com/feed', document);
-    expect(entries.length).toBeGreaterThan(0); expect(entries.length).toBeLessThanOrEqual(50);
-    expect(new TextEncoder().encode(JSON.stringify(entries)).length).toBeLessThan(1024 * 1024 + 100);
+    expect(entries).toHaveLength(80);
+    expect(new TextEncoder().encode(JSON.stringify(entries)).length).toBeGreaterThan(1024 * 1024);
+    const long = await parseFeed(`<rss><channel><title>Long</title><item><guid>a</guid><title>A</title><description>${'y'.repeat(150000)}</description></item></channel></rss>`, 'https://example.com/feed', document);
+    expect(long.entries[0].content.length).toBeGreaterThan(100_000);
+    expect(long.entries[0].content).not.toContain('已缓存部分内容');
   });
 });
 describe('OPML and migration', () => {
@@ -157,13 +160,13 @@ describe('local subscription lifecycle', () => {
     await service.refresh([feed.id], document, true);
     expect(feed.entries).toHaveLength(1); expect(feed.error).toContain('无法读取'); expect(feed.error).not.toContain('secret');
   });
-  it('imports without fetching, skips existing feeds, and enforces capacity atomically', async () => {
+  it('imports without fetching, skips existing feeds, and has no capacity cap (fork)', async () => {
     const state = initialState(null), transport = vi.fn(); const service = new Subscriptions(() => state, async () => {}, transport);
     expect(await service.import([{ url: 'https://example.com/feed', name: 'A', group: 'Tech' }])).toBe(1);
     expect(await service.import([{ url: 'https://example.com/feed', name: 'Overwrite', group: '' }])).toBe(0);
     expect(state.subscriptions[0].name).toBe('A'); expect(transport).not.toHaveBeenCalled();
-    await expect(service.import(Array.from({ length: MAX_SUBSCRIPTIONS + 1 }, (_, i) => ({ url: `https://example.com/feed/${i}`, name: String(i), group: '' })))).rejects.toThrow('超过');
-    expect(state.subscriptions).toHaveLength(1);
+    await expect(service.import(Array.from({ length: 2001 }, (_, i) => ({ url: `https://example.com/feed/${i}`, name: String(i), group: '' })))).resolves.toBe(2001);
+    expect(state.subscriptions).toHaveLength(2002);
   });
   it('does not resurrect a feed deleted while its refresh is pending; keeps favorites', async () => {
     const state = initialState(null); let finish!: (value: { status: number; text: string }) => void;

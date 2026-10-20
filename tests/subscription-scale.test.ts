@@ -6,14 +6,14 @@ import { Subscriptions, refreshIntervalMs } from '../src/subscriptions';
 beforeAll(() => { Object.defineProperty(window.crypto, 'subtle', { value: webcrypto.subtle, configurable: true }); });
 const xml = '<rss><channel><title>Feed</title><item><guid>new</guid><title>New</title></item></channel></rss>';
 describe('large subscription libraries', () => {
-  it('evicts rebuildable bodies without losing article metadata or saved bodies', async () => {
+  it('keeps all bodies without a total cap (fork) while preserving metadata and saved bodies', async () => {
     const state = initialState(null);
     for (let i = 0; i < 24; i++) state.subscriptions.push(subscriptionSchema.parse({ name: 'Feed', id: `f${i}`, url: `https://example.com/${i}`, entries: [{ id: `e${i}`, sourceId: `f${i}`, title: `Article ${i}`, content: 'x'.repeat(1024 * 1024) }], updatedAt: i + 1 }));
     state.favorites.e0 = { entry: state.subscriptions[0].entries[0], rewrite: null, translation: null, fetchedAt: 1 };
     const service = new Subscriptions(() => state, async () => {}, async () => ({ status: 200, text: xml }));
     await service.refresh(['f23'], document, true);
     expect(state.subscriptions.slice(0, 23).every(feed => feed.entries.length === 1)).toBe(true);
-    expect(state.subscriptions.some(feed => !feed.entries[0]?.content)).toBe(true);
+    expect(state.subscriptions.slice(0, 23).every(feed => feed.entries[0]?.content)).toBe(true);
     expect(state.favorites.e0.entry.content).toHaveLength(1024 * 1024);
   });
   it('persists successful unchanged checks and clears previous failure backoff', async () => {

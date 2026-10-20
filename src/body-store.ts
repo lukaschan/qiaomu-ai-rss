@@ -9,7 +9,9 @@ export class BodyStore {
   private known?: Set<string>;
   private sizes?: Map<string, number>;
   private removed = new Set<string>();
-  constructor(private adapter: Pick<DataAdapter, 'exists' | 'read' | 'write' | 'mkdir' | 'stat' | 'list'>, private directory: string, private legacyPath: string, private maxBytes = 20 * 1024 * 1024) {}
+  // Fork change (lukaschan): default body-store cap removed (was 20 MB with
+  // LRU eviction). Callers may still pass an explicit cap (used by tests).
+  constructor(private adapter: Pick<DataAdapter, 'exists' | 'read' | 'write' | 'mkdir' | 'stat' | 'list'>, private directory: string, private legacyPath: string, private maxBytes = Number.POSITIVE_INFINITY) {}
   private bucket(id: string) { let hash = 2166136261; for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619); return (hash >>> 0) % 32; }
   private path(bucket: number) { return `${this.directory}/${bucket}.json`; }
   private modern() { return this.mode ??= this.adapter.exists(`${this.directory}/ready.json`); }

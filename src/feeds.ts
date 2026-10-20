@@ -2,8 +2,9 @@ import createDOMPurify from 'dompurify';
 import { safeUrl, type Entry, type Subscription } from './model';
 import { fail, t } from './i18n';
 
-export const MAX_SUBSCRIPTIONS = 2000;
-const MAX_STORED_FEED = 1024 * 1024;
+// Fork change (lukaschan): upstream capacity limits removed — no cap on the
+// number of subscriptions, items read per feed, entries kept per feed,
+// stored bytes per feed, or characters per article.
 export interface FeedInput { url: string; name: string; group: string }
 export function feedUrl(value: string): string {
   const safe = safeUrl(value.trim());
@@ -101,8 +102,8 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
   const name = plain(text(parent, 'title'), doc).slice(0, 200) || new URL(url).hostname;
   const sourceId = `local:${await stableId(url)}`;
   const items = atom ? children(root, 'entry') : children(root.localName === 'RDF' ? root : parent, 'item');
-  const entries: Entry[] = []; const ids = new Set<string>(); let size = 0;
-  for (const item of items.slice(0, 200)) {
+  const entries: Entry[] = []; const ids = new Set<string>();
+  for (const item of items) {
     const linkNode = atom ? children(item, 'link').find(el => !el.getAttribute('rel') || el.getAttribute('rel') === 'alternate') : child(item, 'link');
     const linkValue = atom ? linkNode?.getAttribute('href') : linkNode?.textContent;
     const base = baseUrl(item, url);
@@ -116,16 +117,13 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
     if (ids.has(id)) continue; ids.add(id);
     const publishedTs = Date.parse(published);
     const contentBase = contentNode && hasXmlBase(contentNode) ? baseUrl(contentNode, url) : link || base;
-    const parsedContent = contentWithBase(raw.slice(0, 100_000), contentBase, doc);
+    const parsedContent = contentWithBase(raw, contentBase, doc);
     const entry: Entry = { id, sourceId, origin: 'local', sourceName: name, title, link: link || url, image: entryImage(item, parsedContent.image, contentBase), audio: entryAudio(item, base),
       published, publishedTs: Number.isNaN(publishedTs) ? null : publishedTs,
       author: atom ? text(child(item, 'author') || root, 'name') : text(item, 'creator') || text(item, 'author'),
-      summary: plain(raw, doc).slice(0, 240), content: (parsedContent.html || t('reader.noFeedContent')) + (raw.length > 100_000 ? t('reader.truncatedContent') : '') };
-    size += new TextEncoder().encode(JSON.stringify(entry)).byteLength;
-    if (size > MAX_STORED_FEED) break;
+      summary: plain(raw, doc).slice(0, 240), content: parsedContent.html || t('reader.noFeedContent') };
     entries.push(entry);
     if (entries.length % 10 === 0) await new Promise<void>(resolve => doc.defaultView!.setTimeout(resolve, 0));
-    if (entries.length === 50) break;
   }
   entries.sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
   const rootSite = root.localName === 'feed' ? Array.from(root.children).find(el => el.localName === 'link' && (!el.getAttribute('rel') || el.getAttribute('rel') === 'alternate'))?.getAttribute('href') : text(child(root, 'channel') || root, 'link');

@@ -2,8 +2,8 @@ import type { ResolvedFeed } from './feed-resolver';
 import { TaskPool } from './task-pool';
 import { registerSource, ensureGroup } from './personal-library';
 import { requestUrl } from 'obsidian';
-import { feedUrl, MAX_SUBSCRIPTIONS, parseFeed, stableId, type FeedInput } from './feeds';
-import { stripFeedBodies, subscriptionSchema, type State, type Subscription } from './model';
+import { feedUrl, parseFeed, stableId, type FeedInput } from './feeds';
+import { subscriptionSchema, type State, type Subscription } from './model';
 import { fail, isLocalizedError, LocalizedError, t } from './i18n';
 export type FeedTransport = (url: string, headers?: Record<string, string>) => Promise<{ status: number; text: string; headers?: Record<string, string> }>;
 export type RefreshOutcome = 'changed' | 'unchanged' | 'failed' | 'skipped';
@@ -69,7 +69,6 @@ export class Subscriptions {
   async add(raw: string, group: string, doc: Document): Promise<Subscription> {
     const url = feedUrl(raw);
     if (this.state().subscriptions.some(feed => feed.url === url)) fail('error.feedDuplicate');
-    if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) fail('error.feedLimit', { n: MAX_SUBSCRIPTIONS });
     const parsed = await this.fetch(url, doc);
     return this.addResolved({ kind: 'feed', url, parsed, etag: parsed.etag, lastModified: parsed.lastModified }, group);
   }
@@ -79,7 +78,6 @@ export class Subscriptions {
     return this.commit(() => {
       if (!current() || this.disposed) fail('source.cancelled');
       if (this.state().subscriptions.some(item => item.url === url)) fail('error.feedDuplicate');
-      if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) fail('error.feedLimit', { n: MAX_SUBSCRIPTIONS });
       this.state().subscriptions.push(feed); registerSource(this.state(), feed.id, feed.group);
       this.onBodiesChanged(); // Persist the newly downloaded bodies before saving their metadata.
       return feed;
@@ -96,7 +94,6 @@ export class Subscriptions {
       if (!current() || this.disposed) fail('source.cancelled');
       const existing = new Set(this.state().subscriptions.map(feed => feed.url));
       const additions = prepared.filter(feed => { if (existing.has(feed.url)) return false; existing.add(feed.url); return true; });
-      if (this.state().subscriptions.length + additions.length > MAX_SUBSCRIPTIONS) fail('error.importLimit', { n: MAX_SUBSCRIPTIONS });
       this.state().subscriptions.push(...additions); for (const feed of additions) registerSource(this.state(), feed.id, feed.group);
       if (additions.length > 60) {
         const state = this.state();
@@ -163,15 +160,8 @@ export class Subscriptions {
       }
     };
     await Promise.all(Array.from({ length: Math.min(3, remaining.length) }, worker));
-    // Cap total stored feed bytes once per sync instead of once per feed.
-    if (changed > 0) {
-      let bytes = 0;
-      for (const item of [...this.state().subscriptions].sort((a, b) => b.updatedAt - a.updatedAt)) {
-        const size = item.entries.reduce((sum, entry) => sum + (entry.content ? new TextEncoder().encode(entry.content).length : 0), 0);
-        if (bytes + size > 20 * 1024 * 1024) { item.entries = stripFeedBodies(item.entries).entries; bodiesChanged = true; }
-        else bytes += size;
-      }
-    }
+    // Fork change (lukaschan): the upstream 20 MB total-bodies cap (which
+    // stripped older feeds' bodies during sync) is removed.
     if (bodiesChanged) this.onBodiesChanged();
     if (!this.disposed && changed + unchanged + failed > 0) await this.persist();
     const summary: RefreshSummary = { refreshed: done, changed, unchanged, failed, skipped, elapsedMs: Date.now() - started, bodiesChanged };
